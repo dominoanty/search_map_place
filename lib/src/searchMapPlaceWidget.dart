@@ -3,11 +3,12 @@ part of search_map_place;
 class SearchMapPlaceWidget extends StatefulWidget {
   SearchMapPlaceWidget({
     @required this.apiKey,
-    this.placeholder = 'Search',
+    this.placeholder = 'Dominoanty\'s Search',
     this.icon = Icons.search,
     this.hasClearButton = true,
     this.clearIcon = Icons.clear,
     this.iconColor = Colors.blue,
+    this.searchTextController,
     this.onSelected,
     this.onSearch,
     this.language = 'en',
@@ -72,6 +73,10 @@ class SearchMapPlaceWidget extends StatefulWidget {
   /// Enables Dark Mode when set to `true`. Default value is `false`.
   final bool darkMode;
 
+  /// Lets the user override the text shown in the Text box. This can be useful while integrating with the
+  /// Google Maps Flutter widget.
+  final SearchTextController searchTextController;
+
   @override
   _SearchMapPlaceWidgetState createState() => _SearchMapPlaceWidgetState();
 }
@@ -127,6 +132,8 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget> with Ticker
       });
       _crossFadeState = CrossFadeState.showFirst;
     }
+
+    widget.searchTextController?._addState(this);
 
     super.initState();
   }
@@ -367,4 +374,21 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget> with Ticker
     _fn.dispose();
     super.dispose();
   }
+}
+class SearchTextController {
+
+  _SearchMapPlaceWidgetState _searchWidgetState;
+
+  _addState(_SearchMapPlaceWidgetState searchWidgetState) {
+    this._searchWidgetState = searchWidgetState;
+  }
+
+  bool get isAttached => _searchWidgetState != null;
+
+  setText(String text) {
+    _searchWidgetState._textEditingController.value = TextEditingValue(
+      text: text
+    );
+  }
+
 }
