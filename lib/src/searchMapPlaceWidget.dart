@@ -3,7 +3,7 @@ part of search_map_place;
 class SearchMapPlaceWidget extends StatefulWidget {
   SearchMapPlaceWidget({
     @required this.apiKey,
-    this.placeholder = 'Dominoanty\'s Search',
+    this.placeholder = 'Search',
     this.icon = Icons.search,
     this.hasClearButton = true,
     this.clearIcon = Icons.clear,
@@ -375,6 +375,7 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget> with Ticker
     super.dispose();
   }
 }
+
 class SearchTextController {
 
   _SearchMapPlaceWidgetState _searchWidgetState;
@@ -386,6 +387,7 @@ class SearchTextController {
   bool get isAttached => _searchWidgetState != null;
 
   setText(String text) {
+    assert(isAttached, "SearchTextController must be attached to a SearchMapPlaceWidget");
     _searchWidgetState._textEditingController.value = TextEditingValue(
       text: text
     );
