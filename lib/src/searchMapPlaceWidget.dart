@@ -10,6 +10,7 @@ class SearchMapPlaceWidget extends StatefulWidget {
     this.iconColor = Colors.blue,
     this.searchTextController,
     this.onSelected,
+    this.onFavoriteSelected,
     this.onSearch,
     this.onFavorited,
     this.language = 'en',
@@ -91,7 +92,10 @@ class SearchMapPlaceWidget extends StatefulWidget {
 
   FocusNode focusNode;
 
-  final Function(String location) onFavorited;
+  final Function(SimplePlace simplePlace) onFavorited;
+
+  /// Callback for when user selects favorite item or recent item
+  final Function(ListedSearchItem searchItem) onFavoriteSelected;
 
   @override
   _SearchMapPlaceWidgetState createState() => _SearchMapPlaceWidgetState();
@@ -113,6 +117,10 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget> with Ticker
   bool _isTouched = false;
   bool _isValid = false;
 
+
+  // To store the place that is currently being displayed
+  SimplePlace _currentPlace;
+
   List<dynamic> _placePredictions = [];
   bool _isEditing = false;
   Geocoding geocode;
@@ -120,10 +128,13 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget> with Ticker
   String _tempInput = "";
   String _currentInput = "";
 
+  IsFavorited _isFavorited;
+
   CrossFadeState _crossFadeState;
 
   @override
   void initState() {
+    _isFavorited = IsFavorited();
     geocode = Geocoding(apiKey: widget.apiKey, language: widget.language);
     _animationController = AnimationController(vsync: this, duration: Duration(milliseconds: 500));
     _containerHeight = Tween<double>(begin: 55, end: 364).animate(
@@ -221,7 +232,7 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget> with Ticker
                       ),
                       Divider(),
                     ],
-                  if (_placePredictions.length == 0 && widget.recents.length > 0)
+                  if (_placePredictions.length == 0 && (widget.recents?.length ?? 0) > 0)
                     ...[
                       Text('Recents',
                         textAlign: TextAlign.start,
@@ -267,16 +278,30 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget> with Ticker
           if(this._isValid)
             GestureDetector(
               onTap: () {
-                widget.onFavorited(_textEditingController.value.toString());
+                widget.onFavorited(_currentPlace);
               },
               child: Container(
                 margin: EdgeInsets.only(right: 5),
-                child: Icon(Icons.favorite_border, color: Colors.red)),
+                child: StreamBuilder(
+                    stream: _isFavorited.stream,
+                    initialData: false,
+                    builder: (context, snapshot) {
+                      return
+                      Icon(
+                          snapshot.data ?
+                            Icons.favorite :
+                            Icons.favorite_border,
+                          color: Colors.red
+                      );
+                })),
             ),
           if (widget.hasClearButton)
             GestureDetector(
               onTap: () {
                 if (_crossFadeState == CrossFadeState.showSecond) {
+                  if(_textEditingController.text.length == 0) {
+                    _closeSearch2();
+                  }
                   _textEditingController.clear();
                   _dirtiedByOtherController = false;
                   setState(() {
@@ -304,7 +329,7 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget> with Ticker
 
     return MaterialButton(
       padding: EdgeInsets.symmetric(horizontal: 0, vertical: 0),
-      onPressed: () => { log('selected ${favoriteItem.address}') } ,
+      onPressed: () => { _selectListedSearchItem(searchItem: favoriteItem) } ,
       child: ListTile(
         title: Text(
           place.length < 45 ? "$place" : "${place.replaceRange(45, place.length, "")} ...",
@@ -434,10 +459,43 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget> with Ticker
     }
   }
 
+  _updateFaveIndicator(dynamic place) async {
+    var address;
+    if(place is ListedSearchItem) {
+      address = place.address;
+    }
+    else if(place is Place) {
+      address = place.description;
+    }
+    else if(place is SimplePlace) {
+      address = place.address;
+    }
+    _isFavorited.state = widget
+                          .favorites
+                          .map((e) => e.address)
+                          .contains(address);
+  }
+
+  _selectListedSearchItem({ListedSearchItem searchItem}) {
+    touchedAndDirty(false, true);
+    _textEditingController.value = TextEditingValue(
+        text: searchItem.address,
+        selection: TextSelection.collapsed(
+        offset: searchItem.address.length,
+      ),
+    );
+
+    // Makes animation
+    _finishSearch();
+    _updateFaveIndicator(searchItem);
+    widget.onFavoriteSelected(searchItem);
+  }
+
   /// Will be called when a user selects one of the Place options
   void _selectPlace({Place prediction}) async {
     if (prediction != null) {
       touchedAndDirty(false, true);
+      _currentPlace = await SimplePlace.fromPlace(prediction);
       _textEditingController.value = TextEditingValue(
         text: prediction.description,
         selection: TextSelection.collapsed(
@@ -453,6 +511,8 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget> with Ticker
 
     // Calls the `onSelected` callback
     if (prediction is Place) widget.onSelected(prediction);
+
+    _updateFaveIndicator(prediction);
   }
 
   void _finishSearch() async {
@@ -476,6 +536,11 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget> with Ticker
     _textEditingController.addListener(_autocompletePlace);
   }
 
+  void _closeSearch2() async {
+    touchedAndDirty(false, false);
+    widget.focusNode.unfocus();
+    _animationController.reverse();
+  }
   /// Will listen for input changes every 0.5 seconds, allowing us to make API requests only when the user stops typing.
   void customListener() {
     Future.delayed(Duration(milliseconds: 500), () {
@@ -494,9 +559,11 @@ class _SearchMapPlaceWidgetState extends State<SearchMapPlaceWidget> with Ticker
   void dispose() {
     _animationController.dispose();
     _textEditingController.dispose();
+    _isFavorited.dispose();
     widget.focusNode.dispose();
     super.dispose();
   }
+
 
 }
 
@@ -509,6 +576,12 @@ class SearchTextController {
   }
 
   bool get isAttached => _searchWidgetState != null;
+
+  setSimplePlace(SimplePlace simplePlace) {
+    _searchWidgetState._currentPlace = simplePlace;
+    _searchWidgetState._updateFaveIndicator(simplePlace);
+    setText(simplePlace.address);
+  }
 
   setText(String text) {
     assert(isAttached, "SearchTextController must be attached to a SearchMapPlaceWidget");
